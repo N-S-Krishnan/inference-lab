@@ -15,6 +15,7 @@ client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 MODEL = "claude-haiku-5-5"
 MAX_STEPS = 10
+TOKEN_BUDGET = 50000
 MAX_OUTPUT = 20000
 
 BASE_DIR = Path(__file__).parent
@@ -161,6 +162,12 @@ def run_agent_loop(prompt: str):
 
         if not tool_calls:
             stop_reason = "done"
+            break
+
+        # Stop before sending another request once the budget is spent
+        if total_input_tokens + total_output_tokens >= TOKEN_BUDGET:
+            stop_reason = "token_budget"
+            print("Stopped: hit the token budget")
             break
 
         messages.append({"role": "user", "content": results})
