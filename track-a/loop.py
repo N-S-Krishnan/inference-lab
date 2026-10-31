@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import subprocess
 import time
@@ -111,6 +112,15 @@ def run_tool(call) -> str:
         return f"Error: {call.name} failed: {e}"
 
 
+def verify_done(final_text: str):
+    # Stub: every scratch file the answer names in backticks must exist
+    names = re.findall(r"`([\w.-]+\.(?:txt|py|csv|md|json))`", final_text)
+    missing = [n for n in names if not (SCRATCH / n).is_file()]
+    if missing:
+        return False, f"Verification failed: these files named in your answer do not exist in scratch: {', '.join(missing)}. Check the files or correct your answer."
+    return True, "Verification passed"
+
+
 def run_agent_loop(prompt: str):
     print(f"🤖 Task assigned: '{prompt}'\n")
 
@@ -126,6 +136,12 @@ def run_agent_loop(prompt: str):
             f.write(json.dumps(record) + "\n")
 
     for step in range(1, MAX_STEPS + 1):
+        # Stop before sending another request once the budget is spent
+        if total_input_tokens + total_output_tokens >= TOKEN_BUDGET:
+            stop_reason = "token_budget"
+            print("Stopped: hit the token budget")
+            break
+
         print(f"--- Step {step} ---")
 
         response = client.messages.create(
@@ -144,6 +160,7 @@ def run_agent_loop(prompt: str):
             if block.type == "text":
                 print(f"Claude: {block.text}")
 
+        response_text = "".join(b.text for b in response.content if b.type == "text")
         tool_calls = [b for b in response.content if b.type == "tool_use"]
         results = []
         for call in tool_calls:
@@ -161,14 +178,13 @@ def run_agent_loop(prompt: str):
         })
 
         if not tool_calls:
-            stop_reason = "done"
-            break
-
-        # Stop before sending another request once the budget is spent
-        if total_input_tokens + total_output_tokens >= TOKEN_BUDGET:
-            stop_reason = "token_budget"
-            print("Stopped: hit the token budget")
-            break
+            ok, message = verify_done(response_text)
+            if ok:
+                stop_reason = "done"
+                break
+            print(f"⚠️ {message}")
+            messages.append({"role": "user", "content": message})
+            continue
 
         messages.append({"role": "user", "content": results})
 
