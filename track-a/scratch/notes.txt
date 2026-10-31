@@ -1,0 +1,5 @@
+Scratch notes for the agent loop experiments.
+
+- Step 1: single model call, print text and token usage.
+- Step 2: add read_file and list_dir.
+- Keep logs in track-a/runs/.
